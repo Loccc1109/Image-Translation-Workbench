@@ -222,11 +222,7 @@ export function App() {
       showNotice("error", "请先填写目标语言");
       return;
     }
-    const imageFiles = [...files].filter((file) =>
-      ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
-        file.type,
-      ),
-    );
+    const imageFiles = [...files].filter(isSupportedImage);
     if (!imageFiles.length) {
       showNotice("error", "没有找到支持的图片");
       return;
@@ -252,9 +248,7 @@ export function App() {
   }
   async function appendImages(files: FileList | File[]) {
     if (!task) return;
-    const imageFiles = [...files].filter((file) =>
-      ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type),
-    );
+    const imageFiles = [...files].filter(isSupportedImage);
     if (!imageFiles.length) {
       showNotice("error", "没有找到支持的图片");
       return;
@@ -661,6 +655,12 @@ function PanelHeading({
     </div>
   );
 }
+function isSupportedImage(file: File) {
+  const supportedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  if (supportedTypes.has(file.type.toLowerCase())) return true;
+  return /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+}
+
 function DropZone({
   onFiles,
 }: {
@@ -669,7 +669,7 @@ function DropZone({
   const input = useRef<HTMLInputElement>(null);
   const folder = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  async function readDroppedItems(items: DataTransferItemList) {
+  async function readDroppedItems(items: DataTransferItemList, fallback?: FileList) {
     const files: File[] = [];
     const visit = async (
       entry: FileSystemEntry,
@@ -706,6 +706,7 @@ function DropZone({
       }),
     );
     if (files.length) onFiles(files);
+    else if (fallback?.length) onFiles(fallback);
   }
   return (
     <div
@@ -720,7 +721,7 @@ function DropZone({
         event.preventDefault();
         setOver(false);
         if (event.dataTransfer.items.length)
-          void readDroppedItems(event.dataTransfer.items);
+          void readDroppedItems(event.dataTransfer.items, event.dataTransfer.files);
         else if (event.dataTransfer.files.length)
           onFiles(event.dataTransfer.files);
       }}
