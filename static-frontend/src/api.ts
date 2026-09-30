@@ -1,4 +1,5 @@
 import type { Item, Settings, Task, TaskSummary } from './types';
+import { prepareDownload } from './download';
 
 const DB = 'yitu-static';
 const STORE = 'records';
@@ -57,3 +58,11 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
 }
 export function imageUrl(taskId: string, itemId: string, kind: 'source'|'result'|'download', _version = '') { const itemKind = kind === 'source' ? 'source' : 'result'; return blobs.get(key(taskId,itemId,itemKind)) || ''; }
 export async function hydrateTask(task: Task) { return hydrate(task); }
+
+/** 读取生成结果，按下载宽高缩放并写入 XMP 标签，返回可下载的 JPG。 */
+export async function downloadBlob(taskId: string, itemId: string, width = 0, height = 0) {
+  const result = await dbGet<Blob>(key(taskId, itemId, 'result'));
+  if (!result) throw new Error('没有找到生成结果');
+  const clamp = (value: number) => Math.max(0, Math.min(20000, Math.round(value) || 0));
+  return prepareDownload(result, clamp(width), clamp(height));
+}

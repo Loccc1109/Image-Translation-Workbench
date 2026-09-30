@@ -32,7 +32,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { imageUrl, json, request } from "../api";
+import { downloadBlob, imageUrl, json, request } from "../api";
 import {
   type Item,
   type Settings,
@@ -308,22 +308,30 @@ export function App() {
       showNotice("error", apiError(error));
     }
   }
-  function downloadImages(ids = downloadSelectedIds) {
+  async function downloadImages(ids = downloadSelectedIds) {
     if (!task) return;
     const available = task.items.filter((item) => item.imageStatus === "done" && item.hasResult);
     const chosen = ids.map((id) => available.find((item) => item.id === id)).filter((item): item is Item => !!item);
     if (!chosen.length) { showNotice("info", "没有可下载的已生成图片"); return; }
-    const timestamp = Date.now();
-    chosen.forEach((item, index) => window.setTimeout(() => {
-      const link = document.createElement("a");
-      const name = `img_${timestamp + index}.jpg`;
-      // blob: URL 不能拼接查询参数，否则浏览器无法解析
-      link.href = imageUrl(task.id, item.id, "download");
-      link.download = name;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    }, index * 300));
+    const currentTask = task;
+    await runAction("准备下载", async () => {
+      const timestamp = Date.now();
+      for (const [index, item] of chosen.entries()) {
+        // 在浏览器内按宽高缩放、转 JPG 并写入 XMP 标签
+        const blob = await downloadBlob(currentTask.id, item.id, downloadWidth, downloadHeight);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `img_${timestamp + index}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        // 延迟释放，避免浏览器还没开始下载就被回收
+        window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+        // 连续触发多个下载时留出间隔，避免被浏览器拦截
+        if (index < chosen.length - 1) await new Promise((resolve) => window.setTimeout(resolve, 300));
+      }
+    });
   }
   async function savePrompt(prompt: string) {
     if (!task || !selectedItem) return;
