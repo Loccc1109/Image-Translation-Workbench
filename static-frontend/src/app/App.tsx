@@ -317,7 +317,8 @@ export function App() {
     chosen.forEach((item, index) => window.setTimeout(() => {
       const link = document.createElement("a");
       const name = `img_${timestamp + index}.jpg`;
-      link.href = `${imageUrl(task.id, item.id, "download")}?${new URLSearchParams({ width: String(downloadWidth), height: String(downloadHeight), name })}`;
+      // blob: URL 不能拼接查询参数，否则浏览器无法解析
+      link.href = imageUrl(task.id, item.id, "download");
       link.download = name;
       document.body.appendChild(link);
       link.click();
