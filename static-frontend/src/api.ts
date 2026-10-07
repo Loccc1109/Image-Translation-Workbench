@@ -7,10 +7,10 @@ const tasksKey = 'tasks';
 const blobs = new Map<string, string>();
 
 const defaults: Settings = {
-  geminiBaseUrl: '', geminiModel: 'gemini-2.5-flash', geminiAuth: 'bearer', geminiAuthHeader: '', geminiKeySet: false,
-  extraInstruction: '', imageBaseUrl: 'https://task-api-1-cn.65535.space', imageModel: 'gpt-image-2', imageKeySet: false,
-  size: '', resolution: '', quality: '', downloadWidth: 0, downloadHeight: 0, checkModel: false,
-  promptConcurrency: 2, imageConcurrency: 2, pollSeconds: 2, timeoutMinutes: 30, autoPrompt: true, autoGenerate: false,
+  geminiBaseUrl: 'https://api.aiday.top', geminiModel: 'gemini-3.8-flash(high)', geminiAuth: 'bearer', geminiAuthHeader: '', geminiKeySet: false,
+  extraInstruction: '', imageBaseUrl: 'https://task-api-1-cn.65535.space', imageModel: 'grok-imagine-image-2.0', imageKeySet: false,
+  size: 'auto', resolution: '2K', quality: '', downloadWidth: 0, downloadHeight: 0, checkModel: false,
+  promptConcurrency: 2, imageConcurrency: 2, pollSeconds: 2, timeoutMinutes: 30, autoPrompt: false, autoGenerate: false,
 };
 function openDb(): Promise<IDBDatabase> { return new Promise((resolve, reject) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); }); }
 async function dbGet<T>(key: string): Promise<T | undefined> { const db = await openDb(); return new Promise((resolve, reject) => { const r = db.transaction(STORE).objectStore(STORE).get(key); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); }); }
@@ -45,7 +45,7 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
   const task = await getTask(taskId); if (!task) throw new Error('任务不存在');
   if (rest === '' && method === 'GET') return await hydrate(task) as T;
   if (rest === '' && method === 'DELETE') { await saveTasks((await allTasks()).filter(t => t.id !== taskId)); return { ok:true } as T; }
-  if (rest === '/prompts/generate' && method === 'POST') return await hydrate(await generatePrompts(task)) as T;
+  if (rest === '/prompts/generate' && method === 'POST') { const body = JSON.parse(String(options.body || '{}')); if (typeof body.language === 'string' && body.language.trim()) task.language = body.language.trim().slice(0, 80); if (!task.language.trim()) throw new Error('请输入目标语言后再生成提示词'); return await hydrate(await generatePrompts(task)) as T; }
   if (rest === '/images/generate' && method === 'POST') return await hydrate(await generateImages(task)) as T;
   if (rest === '/validate' && method === 'POST') return await hydrate(task) as T;
   if (itemId && rest === '' && method === 'DELETE') { task.items = task.items.filter(i => i.id !== itemId); await updateTask(task); return await hydrate(task) as T; }

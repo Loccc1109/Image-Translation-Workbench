@@ -41,17 +41,17 @@ import {
 } from "../types";
 
 const initialSettings: Settings = {
-  geminiBaseUrl: "",
-  geminiModel: "gemini-2.5-flash",
+  geminiBaseUrl: "https://api.aiday.top",
+  geminiModel: "gemini-3.8-flash(high)",
   geminiAuth: "bearer",
   geminiAuthHeader: "",
   geminiKeySet: false,
   extraInstruction: "",
   imageBaseUrl: "https://task-api-1-cn.65535.space",
-  imageModel: "gpt-image-2",
+  imageModel: "grok-imagine-image-2.0",
   imageKeySet: false,
-  size: "",
-  resolution: "",
+  size: "auto",
+  resolution: "2K",
   quality: "",
   downloadWidth: 0,
   downloadHeight: 0,
@@ -60,7 +60,7 @@ const initialSettings: Settings = {
   imageConcurrency: 2,
   pollSeconds: 2,
   timeoutMinutes: 30,
-  autoPrompt: true,
+  autoPrompt: false,
   autoGenerate: false,
 };
 const stageText: Record<Item["promptStatus"], string> = {
@@ -189,9 +189,6 @@ export function App() {
     task?.items.filter((item) => item.promptStatus === "done").length || 0;
   const doneImages =
     task?.items.filter((item) => item.imageStatus === "done").length || 0;
-  const doneChecks =
-    task?.items.filter((item) => item.validationStatus === "passed").length ||
-    0;
   const anyRunning = !!task?.busy;
   const completedItems = task?.items.filter((item) => item.imageStatus === "done" && item.hasResult) || [];
   const allImagesReady = !!task && completedItems.length === task.items.length && task.items.length > 0;
@@ -218,10 +215,6 @@ export function App() {
     await loadTasks();
   }
   async function createTask(files: FileList | File[]) {
-    if (!language.trim()) {
-      showNotice("error", "请先填写目标语言");
-      return;
-    }
     const imageFiles = [...files].filter((file) =>
       ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
         file.type,
@@ -363,9 +356,19 @@ export function App() {
   async function generatePrompts() {
     if (!task) return;
     await runAction("生成提示词", async () => {
+      let targetLanguage = language.trim() || task.language.trim();
+      if (!targetLanguage) {
+        const entered = window.prompt("请输入目标语言", "");
+        if (!entered?.trim()) {
+          showNotice("error", "请输入目标语言后再生成提示词");
+          return;
+        }
+        targetLanguage = entered.trim();
+        setLanguage(targetLanguage);
+      }
       const next = await request<Task>(
         `/api/tasks/${task.id}/prompts/generate`,
-        json("POST"),
+        json("POST", { language: targetLanguage }),
       );
       setTask(next);
     });
@@ -395,16 +398,6 @@ export function App() {
     await runAction("重新生成", async () => {
       const next = await request<Task>(
         `/api/tasks/${task.id}/items/${itemId}/image/regenerate`,
-        json("POST"),
-      );
-      setTask(next);
-    });
-  }
-  async function validate() {
-    if (!task) return;
-    await runAction("校验中", async () => {
-      const next = await request<Task>(
-        `/api/tasks/${task.id}/validate`,
         json("POST"),
       );
       setTask(next);
@@ -594,12 +587,10 @@ export function App() {
           task={task}
           donePrompts={donePrompts}
           doneImages={doneImages}
-          doneChecks={doneChecks}
           busyAction={busyAction}
           settings={settings}
           onGeneratePrompts={generatePrompts}
           onGenerateImages={generateImages}
-          onValidate={validate}
           onRefresh={refreshTask}
         />
       </main>
@@ -1215,29 +1206,24 @@ function TaskRail({
   task,
   donePrompts,
   doneImages,
-  doneChecks,
   busyAction,
   settings,
   onGeneratePrompts,
   onGenerateImages,
-  onValidate,
   onRefresh,
 }: {
   task: Task | null;
   donePrompts: number;
   doneImages: number;
-  doneChecks: number;
   busyAction: string;
   settings: Settings;
   onGeneratePrompts: () => void;
   onGenerateImages: () => void;
-  onValidate: () => void;
   onRefresh: () => void;
 }) {
   const count = task?.items.length || 0;
   const allPrompts = count > 0 && donePrompts === count;
   const allImages = count > 0 && doneImages === count;
-  const allChecks = count > 0 && doneChecks === count;
   return (
     <section className="task-rail">
       <div className="rail-copy">
@@ -1259,9 +1245,6 @@ function TaskRail({
         </span>
         <span className={allImages ? "complete" : ""}>
           <i>2</i> 生成图片
-        </span>
-        <span className={allChecks ? "complete" : ""}>
-          <i>3</i> 一键校验
         </span>
       </div>
       <div className="rail-actions">
@@ -1291,18 +1274,6 @@ function TaskRail({
         >
           <Play size={15} />{" "}
           {busyAction === "生成图片" ? "生成中…" : "生成图片"}
-        </button>
-        <button
-          className="button button-outline"
-          onClick={onValidate}
-          disabled={!task || !!busyAction || !allImages || allChecks}
-        >
-          <Check size={15} />{" "}
-          {busyAction === "校验中"
-            ? "校验中…"
-            : allChecks
-              ? "校验完成"
-              : "校验全部"}
         </button>
       </div>
     </section>
