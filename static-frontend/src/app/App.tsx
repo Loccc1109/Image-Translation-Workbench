@@ -32,7 +32,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { downloadBlob, imageUrl, json, request } from "../api";
+import { imageUrl, json, request } from "../api";
 import {
   type Item,
   type Settings,
@@ -222,7 +222,11 @@ export function App() {
       showNotice("error", "请先填写目标语言");
       return;
     }
-    const imageFiles = [...files].filter(isSupportedImage);
+    const imageFiles = [...files].filter((file) =>
+      ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+        file.type,
+      ),
+    );
     if (!imageFiles.length) {
       showNotice("error", "没有找到支持的图片");
       return;
@@ -248,7 +252,9 @@ export function App() {
   }
   async function appendImages(files: FileList | File[]) {
     if (!task) return;
-    const imageFiles = [...files].filter(isSupportedImage);
+    const imageFiles = [...files].filter((file) =>
+      ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type),
+    );
     if (!imageFiles.length) {
       showNotice("error", "没有找到支持的图片");
       return;
@@ -308,30 +314,21 @@ export function App() {
       showNotice("error", apiError(error));
     }
   }
-  async function downloadImages(ids = downloadSelectedIds) {
+  function downloadImages(ids = downloadSelectedIds) {
     if (!task) return;
     const available = task.items.filter((item) => item.imageStatus === "done" && item.hasResult);
     const chosen = ids.map((id) => available.find((item) => item.id === id)).filter((item): item is Item => !!item);
     if (!chosen.length) { showNotice("info", "没有可下载的已生成图片"); return; }
-    const currentTask = task;
-    await runAction("准备下载", async () => {
-      const timestamp = Date.now();
-      for (const [index, item] of chosen.entries()) {
-        // 在浏览器内按宽高缩放、转 JPG 并写入 XMP 标签
-        const blob = await downloadBlob(currentTask.id, item.id, downloadWidth, downloadHeight);
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `img_${timestamp + index}.jpg`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        // 延迟释放，避免浏览器还没开始下载就被回收
-        window.setTimeout(() => URL.revokeObjectURL(url), 10000);
-        // 连续触发多个下载时留出间隔，避免被浏览器拦截
-        if (index < chosen.length - 1) await new Promise((resolve) => window.setTimeout(resolve, 300));
-      }
-    });
+    const timestamp = Date.now();
+    chosen.forEach((item, index) => window.setTimeout(() => {
+      const link = document.createElement("a");
+      const name = `img_${timestamp + index}.jpg`;
+      link.href = `${imageUrl(task.id, item.id, "download")}?${new URLSearchParams({ width: String(downloadWidth), height: String(downloadHeight), name })}`;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }, index * 300));
   }
   async function savePrompt(prompt: string) {
     if (!task || !selectedItem) return;
@@ -664,12 +661,6 @@ function PanelHeading({
     </div>
   );
 }
-function isSupportedImage(file: File) {
-  const supportedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-  if (supportedTypes.has(file.type.toLowerCase())) return true;
-  return /\.(png|jpe?g|webp|gif)$/i.test(file.name);
-}
-
 function DropZone({
   onFiles,
 }: {
@@ -678,7 +669,7 @@ function DropZone({
   const input = useRef<HTMLInputElement>(null);
   const folder = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
-  async function readDroppedItems(items: DataTransferItemList, fallback?: FileList) {
+  async function readDroppedItems(items: DataTransferItemList) {
     const files: File[] = [];
     const visit = async (
       entry: FileSystemEntry,
@@ -715,7 +706,6 @@ function DropZone({
       }),
     );
     if (files.length) onFiles(files);
-    else if (fallback?.length) onFiles(fallback);
   }
   return (
     <div
@@ -730,7 +720,7 @@ function DropZone({
         event.preventDefault();
         setOver(false);
         if (event.dataTransfer.items.length)
-          void readDroppedItems(event.dataTransfer.items, event.dataTransfer.files);
+          void readDroppedItems(event.dataTransfer.items);
         else if (event.dataTransfer.files.length)
           onFiles(event.dataTransfer.files);
       }}

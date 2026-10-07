@@ -1,5 +1,4 @@
 import type { Item, Settings, Task, TaskSummary } from './types';
-import { prepareDownload } from './download';
 
 const DB = 'yitu-static';
 const STORE = 'records';
@@ -41,8 +40,8 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
   if (url === '/api/config' && method === 'GET') return publicSettings(await getSettings()) as T;
   if (url === '/api/config' && method === 'PUT') { const body = JSON.parse(String(options.body || '{}')); const old = await getSettings(); const next = { ...old, ...body, geminiKey: body.geminiKey || old.geminiKey, imageKey: body.imageKey || old.imageKey }; await dbPut(settingsKey, next); return publicSettings(next) as T; }
   if (url === '/api/tasks' && method === 'GET') { const ts = await allTasks(); return ts.map(t => ({ id:t.id, language:t.language, createdAt:t.createdAt, count:t.items.length, done:t.items.filter(i=>i.imageStatus==='done').length })) as T; }
-  if (url === '/api/tasks' && method === 'POST') { const body = options.body as FormData; const language = String(body.get('language') || ''); const files = [...body.getAll('files')].filter((x): x is File => x instanceof File); const t: Task = { id: crypto.randomUUID(), language, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), busy: false, items: files.map(itemFor) }; for (const [i,f] of files.entries()) await dbPut(key(t.id, t.items[i].id, 'source'), f); await updateTask(t); return await hydrate(t) as T; }
   if (!match) throw new Error('未知请求'); const [, taskId, itemId, rest] = match;
+  if (!itemId && rest === '' && method === 'POST') { const body = options.body as FormData; const language = String(body.get('language') || ''); const files = [...body.getAll('files')].filter((x): x is File => x instanceof File); const t: Task = { id: crypto.randomUUID(), language, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), busy: false, items: files.map(itemFor) }; for (const [i,f] of files.entries()) await dbPut(key(t.id, t.items[i].id, 'source'), f); await updateTask(t); return await hydrate(t) as T; }
   const task = await getTask(taskId); if (!task) throw new Error('任务不存在');
   if (rest === '' && method === 'GET') return await hydrate(task) as T;
   if (rest === '' && method === 'DELETE') { await saveTasks((await allTasks()).filter(t => t.id !== taskId)); return { ok:true } as T; }
@@ -58,11 +57,3 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
 }
 export function imageUrl(taskId: string, itemId: string, kind: 'source'|'result'|'download', _version = '') { const itemKind = kind === 'source' ? 'source' : 'result'; return blobs.get(key(taskId,itemId,itemKind)) || ''; }
 export async function hydrateTask(task: Task) { return hydrate(task); }
-
-/** 读取生成结果，按下载宽高缩放并写入 XMP 标签，返回可下载的 JPG。 */
-export async function downloadBlob(taskId: string, itemId: string, width = 0, height = 0) {
-  const result = await dbGet<Blob>(key(taskId, itemId, 'result'));
-  if (!result) throw new Error('没有找到生成结果');
-  const clamp = (value: number) => Math.max(0, Math.min(20000, Math.round(value) || 0));
-  return prepareDownload(result, clamp(width), clamp(height));
-}
