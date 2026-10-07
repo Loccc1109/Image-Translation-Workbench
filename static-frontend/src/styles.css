@@ -935,14 +935,30 @@ select:focus-visible {
   padding: 24px;
   background: rgba(26, 36, 37, 0.34);
 }
-.settings-modal {
-  width: min(760px, 100%);
-  max-height: min(820px, 92vh);
-  display: flex;
-  flex-direction: column;
+.language-modal {
+  width: min(460px, 100%);
   background: var(--paper);
   box-shadow: 0 30px 90px rgba(20, 32, 31, 0.24);
 }
+.language-modal-body {
+  padding: 22px 26px 8px;
+}
+.language-modal-body p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.language-modal-body input {
+  width: 100%;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 18px 26px 24px;
+}
+
 .modal-head,
 .drawer-head {
   display: flex;

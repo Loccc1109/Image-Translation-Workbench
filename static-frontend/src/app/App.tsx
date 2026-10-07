@@ -104,6 +104,8 @@ export function App() {
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [language, setLanguage] = useState("");
+  const [languageDialogOpen, setLanguageDialogOpen] = useState(false);
+  const [languageDraft, setLanguageDraft] = useState("");
   const [selectedItemId, setSelectedItemId] = useState("");
   const [downloadSelectedIds, setDownloadSelectedIds] = useState<string[]>([]);
   const [downloadWidth, setDownloadWidth] = useState(0);
@@ -276,7 +278,6 @@ export function App() {
   }
   async function deleteItem(itemId: string) {
     if (!task) return;
-    setDownloadSelectedIds((ids) => ids.filter((id) => id !== itemId));
     const item = task.items.find((candidate) => candidate.id === itemId);
     if (!item || !window.confirm(`确定删除“${item.name}”吗？`)) return;
     await runAction("删除图片", async () => {
@@ -285,6 +286,7 @@ export function App() {
         { method: "DELETE" },
       );
       setTask(next);
+      setDownloadSelectedIds((ids) => ids.filter((id) => id !== itemId));
       setSelectedItemId((current) =>
         current === itemId ? next.items[0]?.id || "" : current,
       );
@@ -355,23 +357,33 @@ export function App() {
   }
   async function generatePrompts() {
     if (!task) return;
+    const currentLanguage = language.trim() || task.language.trim();
+    if (!currentLanguage) {
+      setLanguageDraft("");
+      setLanguageDialogOpen(true);
+      return;
+    }
+    await generatePromptsWithLanguage(currentLanguage);
+  }
+  async function generatePromptsWithLanguage(targetLanguage: string) {
+    if (!task || !targetLanguage.trim()) return;
     await runAction("生成提示词", async () => {
-      let targetLanguage = language.trim() || task.language.trim();
-      if (!targetLanguage) {
-        const entered = window.prompt("请输入目标语言", "");
-        if (!entered?.trim()) {
-          showNotice("error", "请输入目标语言后再生成提示词");
-          return;
-        }
-        targetLanguage = entered.trim();
-        setLanguage(targetLanguage);
-      }
       const next = await request<Task>(
         `/api/tasks/${task.id}/prompts/generate`,
-        json("POST", { language: targetLanguage }),
+        json("POST", { language: targetLanguage.trim() }),
       );
+      setLanguage(targetLanguage.trim());
       setTask(next);
     });
+  }
+  async function confirmLanguage() {
+    const targetLanguage = languageDraft.trim();
+    if (!targetLanguage) {
+      showNotice("error", "请输入目标语言后再生成提示词");
+      return;
+    }
+    setLanguageDialogOpen(false);
+    await generatePromptsWithLanguage(targetLanguage);
   }
   async function generateImages() {
     if (!task) return;
@@ -470,9 +482,9 @@ export function App() {
           <div className="language-note">
             <Target size={17} />
             <span>
-              先填写目标语言
+可稍后填写目标语言
               <br />
-              <strong>{language || "等待输入"}</strong>
+              <strong>{language || "生成提示词时填写"}</strong>
             </span>
           </div>
         </section>
@@ -594,6 +606,44 @@ export function App() {
           onRefresh={refreshTask}
         />
       </main>
+      {languageDialogOpen && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="language-dialog-title"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setLanguageDialogOpen(false);
+            if (event.key === "Enter") void confirmLanguage();
+          }}
+        >
+          <div className="language-modal">
+            <div className="modal-head">
+              <div>
+                <div className="eyebrow"><Target size={14} /> 生成提示词</div>
+                <h2 id="language-dialog-title">请输入目标语言</h2>
+              </div>
+              <button className="icon-button" onClick={() => setLanguageDialogOpen(false)} aria-label="关闭">
+                <X size={17} />
+              </button>
+            </div>
+            <div className="language-modal-body">
+              <p>上传图片无需先填写语言。生成提示词前，请告诉我需要翻译成哪种语言。</p>
+              <input
+                autoFocus
+                value={languageDraft}
+                onChange={(event) => setLanguageDraft(event.target.value)}
+                placeholder="例如：日语、韩语、简体中文"
+                aria-label="目标语言"
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="button button-quiet" onClick={() => setLanguageDialogOpen(false)}>取消</button>
+              <button className="button button-copper" onClick={() => void confirmLanguage()}>开始生成</button>
+            </div>
+          </div>
+        </div>
+      )}
       {notice && (
         <div className={`toast toast-${notice.type}`}>
           <span>
