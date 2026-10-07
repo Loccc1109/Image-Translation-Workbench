@@ -36,7 +36,7 @@ async function generateImages(task: Task) { for (const item of task.items.filter
 export const json = (method: string, body?: unknown): RequestInit => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
 
 export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const method = options.method || 'GET'; const match = url.match(/^\/api\/tasks\/([^/]+)(?:\/items\/([^/]+))?(.*)$/);
+  const method = options.method || 'GET'; const match = url.match(/^\/api\/tasks(?:\/([^/]+)(?:\/items\/([^/]+))?(.*))?$/);
   if (url === '/api/config' && method === 'GET') return publicSettings(await getSettings()) as T;
   if (url === '/api/config' && method === 'PUT') { const body = JSON.parse(String(options.body || '{}')); const old = await getSettings(); const next = { ...old, ...body, geminiKey: body.geminiKey || old.geminiKey, imageKey: body.imageKey || old.imageKey }; await dbPut(settingsKey, next); return publicSettings(next) as T; }
   if (url === '/api/tasks' && method === 'GET') { const ts = await allTasks(); return ts.map(t => ({ id:t.id, language:t.language, createdAt:t.createdAt, count:t.items.length, done:t.items.filter(i=>i.imageStatus==='done').length })) as T; }
