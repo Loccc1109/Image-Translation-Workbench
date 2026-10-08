@@ -400,7 +400,7 @@ export function App() {
     await runAction("重新识别", async () => {
       const next = await request<Task>(
         `/api/tasks/${task.id}/items/${itemId}/prompt/regenerate`,
-        json("POST"),
+        json("POST", { language: language.trim() || task.language.trim() }),
       );
       setTask(next);
     });
