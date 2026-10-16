@@ -33,6 +33,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { getResultBlob, imageUrl, json, request } from "../api";
+import { injectJpegXmp } from "../image-label";
 import {
   type Item,
   type Settings,
@@ -90,38 +91,49 @@ async function prepareBlobForDownload(blob: Blob, targetWidth = 0, targetHeight 
   const needsResize = targetWidth > 0 || targetHeight > 0;
   const isJpeg = blob.type === "image/jpeg" || blob.type === "image/jpg";
 
+  let jpegBlob: Blob;
   if (!needsResize && isJpeg) {
-    return blob;
+    jpegBlob = blob;
+  } else {
+    jpegBlob = await new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const width = targetWidth > 0 ? targetWidth : img.naturalWidth;
+        const height = targetHeight > 0 ? targetHeight : img.naturalHeight;
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(blob);
+          return;
+        }
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((result) => {
+          resolve(result || blob);
+        }, "image/jpeg", 0.95);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("图片处理失败"));
+      };
+      img.src = objectUrl;
+    });
   }
 
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(blob);
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const width = targetWidth > 0 ? targetWidth : img.naturalWidth;
-      const height = targetHeight > 0 ? targetHeight : img.naturalHeight;
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        resolve(blob);
-        return;
-      }
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
-      canvas.toBlob((result) => {
-        resolve(result || blob);
-      }, "image/jpeg", 0.95);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("图片处理失败"));
-    };
-    img.src = objectUrl;
-  });
+  try {
+    const arrayBuffer = await jpegBlob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    const taggedBytes = injectJpegXmp(bytes);
+    return new Blob([taggedBytes as unknown as BlobPart], { type: "image/jpeg" });
+  } catch (err) {
+    console.warn("注入 XMP 标签失败，使用原图片下载:", err);
+    return jpegBlob;
+  }
 }
 
 function formatTime(value: string) {
