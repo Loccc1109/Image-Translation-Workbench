@@ -57,5 +57,9 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
   if (rest === '/items' && method === 'POST') { const body=options.body as FormData; const files=[...body.getAll('files')].filter((x):x is File=>x instanceof File); for(const f of files){const i=itemFor(f); task.items.push(i); await dbPut(key(task.id,i.id,'source'),f);} await updateTask(task); return await hydrate(task) as T; }
   throw new Error('未知请求');
 }
+export async function getResultBlob(taskId: string, itemId: string): Promise<Blob | null> {
+  return (await dbGet<Blob>(key(taskId, itemId, 'result'))) || null;
+}
+
 export function imageUrl(taskId: string, itemId: string, kind: 'source'|'result'|'download', _version = '') { const itemKind = kind === 'source' ? 'source' : 'result'; return blobs.get(key(taskId,itemId,itemKind)) || ''; }
 export async function hydrateTask(task: Task) { return hydrate(task); }

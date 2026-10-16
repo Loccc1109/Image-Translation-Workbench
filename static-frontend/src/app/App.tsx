@@ -32,7 +32,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { imageUrl, json, request } from "../api";
+import { getResultBlob, imageUrl, json, request } from "../api";
 import {
   type Item,
   type Settings,
@@ -85,6 +85,44 @@ const checkText: Record<Item["validationStatus"], string> = {
   unknown: "无法判断",
   error: "校验失败",
 };
+
+async function prepareBlobForDownload(blob: Blob, targetWidth = 0, targetHeight = 0): Promise<Blob> {
+  const needsResize = targetWidth > 0 || targetHeight > 0;
+  const isJpeg = blob.type === "image/jpeg" || blob.type === "image/jpg";
+
+  if (!needsResize && isJpeg) {
+    return blob;
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const width = targetWidth > 0 ? targetWidth : img.naturalWidth;
+      const height = targetHeight > 0 ? targetHeight : img.naturalHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(blob);
+        return;
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((result) => {
+        resolve(result || blob);
+      }, "image/jpeg", 0.95);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("图片处理失败"));
+    };
+    img.src = objectUrl;
+  });
+}
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -315,14 +353,28 @@ export function App() {
     const chosen = ids.map((id) => available.find((item) => item.id === id)).filter((item): item is Item => !!item);
     if (!chosen.length) { showNotice("info", "没有可下载的已生成图片"); return; }
     const timestamp = Date.now();
-    chosen.forEach((item, index) => window.setTimeout(() => {
-      const link = document.createElement("a");
-      const name = `img_${timestamp + index}.jpg`;
-      link.href = `${imageUrl(task.id, item.id, "download")}?${new URLSearchParams({ width: String(downloadWidth), height: String(downloadHeight), name })}`;
-      link.download = name;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+    chosen.forEach((item, index) => window.setTimeout(async () => {
+      try {
+        let blob = await getResultBlob(task.id, item.id);
+        if (!blob) {
+          const fallbackUrl = imageUrl(task.id, item.id, "result");
+          if (!fallbackUrl) return;
+          const res = await fetch(fallbackUrl);
+          blob = await res.blob();
+        }
+        const processedBlob = await prepareBlobForDownload(blob, downloadWidth, downloadHeight);
+        const blobUrl = URL.createObjectURL(processedBlob);
+        const link = document.createElement("a");
+        const name = `img_${timestamp + index}.jpg`;
+        link.href = blobUrl;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      } catch (err) {
+        showNotice("error", `下载图片失败: ${apiError(err)}`);
+      }
     }, index * 300));
   }
   async function savePrompt(prompt: string) {
